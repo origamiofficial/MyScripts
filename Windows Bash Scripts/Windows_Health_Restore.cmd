@@ -24,6 +24,8 @@ echo "##### Step 3: Scanning Health #####"
 DISM /Online /Cleanup-Image /ScanHealth
 echo "##### Step 4: Restoring Health #####"
 DISM /Online /Cleanup-Image /RestoreHealth
+echo "##### Step 5: Flushing DNS Cache #####"
+ipconfig /flushdns
 echo "##### We're done now, run again within a month #####"
 echo "##### Your computer will RESTART now #####"
 PAUSE
