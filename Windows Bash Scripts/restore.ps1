@@ -1,11 +1,11 @@
-# Check the instructions here on how to use it "irm https://restore.rlabinc.cf | iex"
+# Check the instructions here on how to use it "irm https://restore.rlabinc.org | iex"
 
 $ErrorActionPreference = "Stop"
-# Enable TLSv1.2 for compatibility with older clients
-[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+# Enable TLSv1.2 for compatibility with older clients for current session
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $DownloadURL = 'https://raw.githubusercontent.com/origamiofficial/MyScripts/main/Windows%20Bash%20Scripts/Windows_Health_Restore.cmd'
-$DownloadURL2 = 'https://raw.github.rlabinc.cf/origamiofficial/MyScripts/main/Windows%20Bash%20Scripts/Windows_Health_Restore.cmd'
+$DownloadURL2 = 'https://github.com/origamiofficial/MyScripts/raw/main/Windows%20Bash%20Scripts/Windows_Health_Restore.cmd'
 
 $rand = Get-Random -Maximum 99999999
 $isAdmin = [bool]([Security.Principal.WindowsIdentity]::GetCurrent().Groups -match 'S-1-5-32-544')
