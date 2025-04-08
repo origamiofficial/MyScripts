@@ -13,16 +13,16 @@ ANALYST_PATH = r"./business_analyst_job_data.csv"
 
 def show_menu():
     print("""
-##################################
-#### ABIA Raw Data Processing ####
-####              Version 4.0 ####
-##################################
+#########################################
+####### ABIA Raw Data Processing ########
+#######              Version 5.0 ########
+#########################################
 1. Combine All CSVs
 2. Extract Business Analyst Jobs
 3. Do Both [1 & 2]
-4. Extract by Location [Business Analyst]
+4. Extract by Country [Business Analyst]
 5. Exit
-##################################
+#########################################
     """)
 
 def detect_encoding(file_path):
@@ -124,57 +124,52 @@ def extract_business_analyst():
         print(f"\n❌ Extraction failed: {str(e)}")
         return False
 
-def extract_location_jobs():
-    """Extract jobs matching specific location criteria"""
+def extract_country_jobs():
+    """Extract jobs matching specific country criteria"""
     try:
         if not os.path.exists(ANALYST_PATH):
             print("\n❌ Business Analyst data not found! Run option 2 or 3 first.")
             return False
         
-        location = input("\nEnter location to search: ").strip()
-        if not location:
-            print("\n❌ No location entered!")
+        country = input("\nEnter country to search: ").strip()
+        if not country:
+            print("\n❌ No country entered!")
             return False
         
         print(f"\nLoading Business Analyst data...")
         df = pd.read_csv(ANALYST_PATH)
         
-        print(f"\nSearching for '{location}' in job locations...")
+        print(f"\nSearching for '{country}' in search_country...")
         matched_rows = []
         total = len(df)
         
-        # Split search terms and normalize
-        search_terms = [term.strip().lower() for term in location.split(',')]
+        # Create case-insensitive pattern for whole country match
+        pattern = re.compile(rf'^{re.escape(country)}$', flags=re.IGNORECASE)
         
         for i, row in df.iterrows():
-            job_loc = str(row.get('job_location', '')).lower()
-            loc_parts = [part.strip() for part in job_loc.split(',')]
+            search_country = str(row.get('search_country', ''))
+            print(f"Checking {i+1}/{total} ({((i+1)/total):.1%}): {search_country[:50]}...", end='\r', flush=True)
             
-            # Check if all search terms exist in location parts
-            match = all(term in loc_parts for term in search_terms)
-            
-            print(f"Checking {i+1}/{total} ({((i+1)/total):.1%}): {job_loc[:50]}...", end='\r', flush=True)
-            
-            if match:
+            if pattern.search(search_country):
                 matched_rows.append(row)
         
         if not matched_rows:
-            print(f"\n❌ No jobs found matching '{location}'")
+            print(f"\n❌ No jobs found in '{country}'")
             return False
             
-        location_df = pd.DataFrame(matched_rows)
+        country_df = pd.DataFrame(matched_rows)
         
         # Clean filename
-        clean_location = re.sub(r'[\\/*?:"<>|,]', '_', location)
-        filename = f"{clean_location.replace(' ', '_')}_job_data.csv"
+        clean_country = re.sub(r'[\\/*?:"<>|]', '_', country)
+        filename = f"{clean_country.replace(' ', '_')}_job_data.csv"
         
-        location_df.to_csv(filename, index=False, encoding='utf-8')
-        print(f"\n✅ Found {len(location_df)} jobs matching '{location}'")
+        country_df.to_csv(filename, index=False, encoding='utf-8')
+        print(f"\n✅ Found {len(country_df)} jobs in '{country}'")
         print(f"📁 Saved to: {filename}")
         return True
         
     except Exception as e:
-        print(f"\n❌ Location extraction failed: {str(e)}")
+        print(f"\n❌ Country extraction failed: {str(e)}")
         return False
 
 def main():
@@ -190,7 +185,7 @@ def main():
             if combine_csvs():
                 extract_business_analyst()
         elif choice == '4':
-            extract_location_jobs()
+            extract_country_jobs()
         elif choice == '5':
             print("\nExiting...")
             break
