@@ -15,7 +15,7 @@ def show_menu():
     print("""
 #########################################
 ####### ABIA Raw Data Processing ########
-#######              Version 5.0 ########
+#######              Version 6.0 ########
 #########################################
 1. Combine All CSVs
 2. Extract Business Analyst Jobs
@@ -163,36 +163,76 @@ def extract_country_jobs():
         clean_country = re.sub(r'[\\/*?:"<>|]', '_', country)
         filename = f"{clean_country.replace(' ', '_')}_job_data.csv"
         
+        # ========== DATA CLEANING ==========
+        print("\n\n🚧 Performing data cleaning:")
+        
+        # 1. Remove unnecessary columns
+        print("1/4 Removing unnecessary columns...")
+        cols_to_drop = ['got_summary', 'got_ner', 'is_being_worked']
+        country_df = country_df.drop(columns=[c for c in cols_to_drop if c in country_df.columns], errors='ignore')
+
+        # 5. Reorganize columns
+        print("2/4 Reorganizing columns...")
+        column_order = [
+            'job_link', 'job_title', 'job_summary', 'company', 
+            'job_location', 'job_level', 'job_skills', 'job_type',
+            'first_seen', 'last_processed_time', 'search_city',
+            'search_country', 'search_position'
+        ]
+        country_df = country_df.reindex(columns=[c for c in column_order if c in country_df.columns])
+        
+        # 6. Remove rows with blank cells
+        print("3/4 Removing incomplete rows...")
+        original_count = len(country_df)
+        country_df = country_df.dropna()
+        removed_count = original_count - len(country_df)
+        
+        # 7. Final validation
+        print("4/4 Final checks...")
+        country_df = country_df.drop_duplicates('job_link')
+        
+        # Save results
         country_df.to_csv(filename, index=False, encoding='utf-8')
+        
+        # Final report
         print(f"\n✅ Found {len(country_df)} jobs in '{country}'")
-        print(f"📁 Saved to: {filename}")
+        if removed_count > 0:
+            print(f"🚫 Removed {removed_count} rows with missing data")
+        print(f"📁 Saved cleaned data to: {filename}")
         return True
         
+    except KeyboardInterrupt:
+        print("\n🛑 Operation cancelled by user!")
+        return False
     except Exception as e:
         print(f"\n❌ Country extraction failed: {str(e)}")
         return False
 
 def main():
-    while True:
-        show_menu()
-        choice = input("Select Your Option [1-5]: ").strip()
-        
-        if choice == '1':
-            combine_csvs()
-        elif choice == '2':
-            extract_business_analyst()
-        elif choice == '3':
-            if combine_csvs():
+    try:
+        while True:
+            show_menu()
+            choice = input("Select Your Option [1-5]: ").strip()
+            
+            if choice == '1':
+                combine_csvs()
+            elif choice == '2':
                 extract_business_analyst()
-        elif choice == '4':
-            extract_country_jobs()
-        elif choice == '5':
-            print("\nExiting...")
-            break
-        else:
-            print("\n❌ Invalid choice! Please select 1-5")
-        
-        input("\nPress Enter to continue...")
+            elif choice == '3':
+                if combine_csvs():
+                    extract_business_analyst()
+            elif choice == '4':
+                extract_country_jobs()
+            elif choice == '5':
+                print("\nExiting...")
+                break
+            else:
+                print("\n❌ Invalid choice! Please select 1-5")
+            
+            input("\nPress Enter to continue...")
+            
+    except KeyboardInterrupt:
+        print("\n\n🛑 Program interrupted by user. Exiting gracefully...")
 
 if __name__ == "__main__":
     main()
