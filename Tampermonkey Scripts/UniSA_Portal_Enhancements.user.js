@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         UniSA Portal Enhancements
 // @namespace    http://tampermonkey.net/
-// @version      0.4
-// @description  Open links in new tabs, redirect root page, and add assignments button
+// @version      0.5
+// @description  Open links in new tabs, redirect root page, and add assignments button with due dates
 // @author       You
 // @match        https://lo.unisa.edu.au/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_addStyle
+// @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
 (function() {
@@ -19,7 +20,7 @@
         return;
     }
 
-    // Add CSS styles with updated color scheme (#00539f)
+    // Add CSS styles
     GM_addStyle(`
         #assignmentsButton {
             position: fixed;
@@ -41,18 +42,18 @@
             border: none;
             user-select: none;
         }
-        
+
         #assignmentsButton:hover {
             transform: scale(1.1);
             box-shadow: 0 6px 25px rgba(0,0,0,0.3);
             background: #0066cc;
         }
-        
+
         #assignmentsButton:active {
             transform: scale(0.95);
             background: #004080;
         }
-        
+
         #assignmentsList {
             position: fixed;
             z-index: 9998;
@@ -66,51 +67,105 @@
             animation: fadeIn 0.3s ease-out;
             display: none;
             min-width: 250px;
+            max-width: 350px;
             backdrop-filter: blur(10px);
             background: rgba(255, 255, 255, 0.95);
         }
-        
+
         .assignment-item {
             padding: 12px 25px;
-            white-space: nowrap;
             cursor: pointer;
             transition: background 0.2s;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             display: flex;
-            align-items: center;
-            color: #333;
+            flex-direction: column;
+            border-bottom: 1px solid #f0f0f0;
         }
-        
+
         .assignment-item:hover {
             background: #e6f0ff;
         }
-        
-        .assignment-item::before {
-            content: '📄';
-            margin-right: 10px;
-            font-size: 1.1em;
+
+        .assignment-name {
+            font-weight: 500;
+            display: flex;
+            align-items: flex-start;
         }
-        
+
+        .assignment-name::before {
+            content: '📄';
+            margin-right: 8px;
+            font-size: 1.1em;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .assignment-due {
+            font-size: 0.85em;
+            color: #666;
+            margin-top: 4px;
+            margin-left: 23px;
+            white-space: normal;
+            line-height: 1.4;
+        }
+
+        .assignment-due.highlight {
+            color: #e53935;
+            font-weight: 500;
+        }
+
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px) scale(0.95); }
             to { opacity: 1; transform: translateY(0) scale(1); }
         }
-        
+
         .pulse {
             animation: pulse 1.5s infinite;
         }
-        
+
         @keyframes pulse {
             0% { box-shadow: 0 0 0 0 rgba(0, 83, 159, 0.7); }
             70% { box-shadow: 0 0 0 12px rgba(0, 83, 159, 0); }
             100% { box-shadow: 0 0 0 0 rgba(0, 83, 159, 0); }
         }
-        
+
         .no-assignments {
             padding: 15px 25px;
             color: #666;
             font-style: italic;
             text-align: center;
+        }
+
+        .loading-due-date {
+            font-size: 0.85em;
+            color: #999;
+            margin-top: 4px;
+            margin-left: 23px;
+            font-style: italic;
+        }
+
+        .error-due-date {
+            font-size: 0.85em;
+            color: #999;
+            margin-top: 4px;
+            margin-left: 23px;
+            font-style: italic;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border: 2px solid rgba(0, 83, 159, 0.3);
+            border-radius: 50%;
+            border-top-color: #00539f;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 5px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
     `);
 
@@ -179,7 +234,7 @@
             if (!isDragging) return;
             const x = window.innerWidth - e.clientX + offset.x;
             const y = window.innerHeight - e.clientY + offset.y;
-            
+
             button.style.right = `${x}px`;
             button.style.bottom = `${y}px`;
         }
@@ -188,7 +243,7 @@
             if (!isDragging) return;
             isDragging = false;
             button.style.transition = '';
-            
+
             // Save position
             const rect = button.getBoundingClientRect();
             GM_setValue('buttonPosition', {
@@ -199,7 +254,7 @@
 
         // Add pulse animation
         button.classList.add('pulse');
-        
+
         // Button click handler
         button.addEventListener('click', function(e) {
             e.stopPropagation();
@@ -213,15 +268,15 @@
             }
         });
 
-        function toggleAssignmentList() {
+        async function toggleAssignmentList() {
             if (list.style.display === 'block') {
                 list.style.display = 'none';
                 return;
             }
-            
+
             // Clear existing items
             list.innerHTML = '';
-            
+
             // Find assignment links and remove duplicates by ID
             const links = Array.from(document.querySelectorAll('a[href*="/mod/assign/view.php"]'));
             const uniqueAssignments = new Map();
@@ -230,9 +285,8 @@
                 try {
                     const url = new URL(link.href);
                     const idParam = url.searchParams.get('id');
-                    
+
                     if (idParam) {
-                        // Use assignment ID as unique key
                         if (!uniqueAssignments.has(idParam)) {
                             uniqueAssignments.set(idParam, {
                                 name: link.textContent.trim(),
@@ -252,24 +306,90 @@
                 list.appendChild(item);
             } else {
                 // Sort assignments alphabetically
-                const sortedAssignments = Array.from(uniqueAssignments.values()).sort((a, b) => 
+                const sortedAssignments = Array.from(uniqueAssignments.values()).sort((a, b) =>
                     a.name.localeCompare(b.name)
                 );
 
+                // Create items immediately with loading state
                 sortedAssignments.forEach(assign => {
                     const item = document.createElement('div');
                     item.className = 'assignment-item';
-                    item.textContent = assign.name;
+
+                    const nameElement = document.createElement('div');
+                    nameElement.className = 'assignment-name';
+                    nameElement.textContent = assign.name;
+
+                    const dueElement = document.createElement('div');
+                    dueElement.className = 'loading-due-date';
+                    dueElement.innerHTML = '<span class="spinner"></span> Loading due date...';
+
+                    item.appendChild(nameElement);
+                    item.appendChild(dueElement);
+
                     item.onclick = () => window.open(assign.url, '_blank');
                     list.appendChild(item);
+
+                    // Fetch due date asynchronously
+                    fetchDueDate(assign.url).then(dueDate => {
+                        dueElement.className = 'assignment-due';
+                        dueElement.textContent = dueDate;
+
+                        // Highlight if due date contains "today" or "tomorrow"
+                        const lowerDate = dueDate.toLowerCase();
+                        if (lowerDate.includes('today') || lowerDate.includes('tomorrow')) {
+                            dueElement.classList.add('highlight');
+                        }
+                    }).catch(error => {
+                        dueElement.className = 'error-due-date';
+                        dueElement.textContent = 'Due date not available';
+                    });
                 });
             }
-            
+
             // Position list relative to button
             const buttonRect = button.getBoundingClientRect();
             list.style.bottom = `${window.innerHeight - buttonRect.top}px`;
             list.style.right = `${window.innerWidth - buttonRect.right}px`;
             list.style.display = 'block';
+        }
+
+        function fetchDueDate(url) {
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: "GET",
+                    url: url,
+                    onload: function(response) {
+                        try {
+                            const parser = new DOMParser();
+                            const doc = parser.parseFromString(response.responseText, "text/html");
+
+                            // Find the due date element
+                            const dueDateElement = doc.querySelector("#region-main > div.activity-header > div.activity-information > div.activity-dates > div > div:nth-child(2)");
+
+                            if (dueDateElement) {
+                                // Extract and clean the due date text
+                                let dueDate = dueDateElement.textContent.trim();
+
+                                // Remove redundant "Assignment due date:" prefix if present
+                                const prefix = "Assignment due date:";
+                                if (dueDate.startsWith(prefix)) {
+                                    dueDate = dueDate.slice(prefix.length).trim();
+                                }
+
+                                resolve(dueDate);
+                            } else {
+                                reject("Due date element not found");
+                            }
+                        } catch (e) {
+                            reject("Error parsing due date");
+                        }
+                    },
+                    onerror: function() {
+                        reject("Failed to fetch due date");
+                    },
+                    timeout: 5000 // 5 seconds timeout
+                });
+            });
         }
     }
 })();
