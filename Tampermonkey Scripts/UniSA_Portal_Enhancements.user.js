@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         UniSA Portal Enhancements
 // @namespace    http://tampermonkey.net/
-// @version      0.6
-// @description  Open links in new tabs, redirect root page, and add assignments button with due dates and submission status
+// @version      1.3
+// @description  Open links in new tabs, redirect root page, and add assignments/quiz button with due dates and submission status
 // @author       OrigamiOfficial
 // @match        https://lo.unisa.edu.au/*
 // @grant        GM_getValue
@@ -66,10 +66,39 @@
             transform-origin: bottom right;
             animation: fadeIn 0.3s ease-out;
             display: none;
-            min-width: 250px;
-            max-width: 400px;
+            min-width: 280px;
+            max-width: 420px;
             backdrop-filter: blur(10px);
             background: rgba(255, 255, 255, 0.95);
+        }
+        
+        .section-title {
+            padding: 10px 25px 5px;
+            font-weight: 600;
+            color: #00539f;
+            font-size: 1.1em;
+            border-bottom: 1px solid #e0e0e0;
+            margin: 10px 0 5px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .section-title::before {
+            content: '';
+            display: inline-block;
+            width: 6px;
+            height: 18px;
+            background: #00539f;
+            border-radius: 3px;
+            margin-right: 10px;
+        }
+        
+        .section-empty {
+            padding: 15px 25px;
+            color: #888;
+            font-style: italic;
+            text-align: center;
+            font-size: 0.9em;
         }
         
         .assignment-item {
@@ -79,7 +108,7 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             display: flex;
             flex-direction: column;
-            border-bottom: 1px solid #f0f0f0;
+            border-bottom: 1px solid #f8f8f8;
         }
         
         .assignment-item:hover {
@@ -137,6 +166,10 @@
             color: #F44336;
         }
         
+        .status-passed {
+            color: #888;
+        }
+        
         .assignment-due.highlight {
             color: #e53935;
             font-weight: 500;
@@ -157,7 +190,7 @@
             100% { box-shadow: 0 0 0 0 rgba(0, 83, 159, 0); }
         }
         
-        .no-assignments {
+        .no-activities {
             padding: 15px 25px;
             color: #666;
             font-style: italic;
@@ -216,7 +249,7 @@
         const button = document.createElement('button');
         button.id = 'assignmentsButton';
         button.innerHTML = '📝';
-        button.title = 'View Assignments';
+        button.title = 'View Activities';
         document.body.appendChild(button);
 
         // Create list container
@@ -296,111 +329,168 @@
             // Clear existing items
             list.innerHTML = '';
             
-            // Find assignment links and remove duplicates by ID
-            const links = Array.from(document.querySelectorAll('a[href*="/mod/assign/view.php"]'));
-            const uniqueAssignments = new Map();
+            // Find activity links
+            const assignmentLinks = Array.from(document.querySelectorAll('a[href*="/mod/assign/view.php"]'));
+            const quizLinks = Array.from(document.querySelectorAll('a[href*="/mod/quiz/view.php"]'));
+            
+            // Organize into sections
+            const sections = [
+                {
+                    title: "Assignments",
+                    type: "assignment",
+                    activities: new Map()
+                },
+                {
+                    title: "Quizzes",
+                    type: "quiz",
+                    activities: new Map()
+                }
+            ];
 
-            links.forEach(link => {
+            // Process assignments
+            assignmentLinks.forEach(link => {
                 try {
                     const url = new URL(link.href);
                     const idParam = url.searchParams.get('id');
-                    
                     if (idParam) {
-                        if (!uniqueAssignments.has(idParam)) {
-                            uniqueAssignments.set(idParam, {
-                                name: link.textContent.trim(),
-                                url: link.href
-                            });
-                        }
+                        sections[0].activities.set(idParam, {
+                            name: link.textContent.trim(),
+                            url: link.href
+                        });
                     }
                 } catch (e) {
                     // Ignore invalid URLs
                 }
             });
 
-            if (uniqueAssignments.size === 0) {
+            // Process quizzes
+            quizLinks.forEach(link => {
+                try {
+                    const url = new URL(link.href);
+                    const idParam = url.searchParams.get('id');
+                    if (idParam) {
+                        sections[1].activities.set(idParam, {
+                            name: link.textContent.trim(),
+                            url: link.href
+                        });
+                    }
+                } catch (e) {
+                    // Ignore invalid URLs
+                }
+            });
+
+            // Check if there are any activities
+            const totalActivities = [...sections[0].activities, ...sections[1].activities].length;
+            if (totalActivities === 0) {
                 const item = document.createElement('div');
-                item.className = 'no-assignments';
-                item.textContent = 'No assignments found';
+                item.className = 'no-activities';
+                item.textContent = 'No activities found';
                 list.appendChild(item);
             } else {
-                // Sort assignments alphabetically
-                const sortedAssignments = Array.from(uniqueAssignments.values()).sort((a, b) => 
-                    a.name.localeCompare(b.name)
-                );
+                // Create sections
+                sections.forEach(section => {
+                    if (section.activities.size === 0) return;
+                    
+                    // Add section title
+                    const title = document.createElement('div');
+                    title.className = 'section-title';
+                    title.textContent = section.title;
+                    list.appendChild(title);
+                    
+                    // Sort activities alphabetically
+                    const sortedActivities = Array.from(section.activities.values()).sort((a, b) => 
+                        a.name.localeCompare(b.name)
+                    );
 
-                // Create items immediately with loading state
-                sortedAssignments.forEach(assign => {
-                    const item = document.createElement('div');
-                    item.className = 'assignment-item';
-                    
-                    const header = document.createElement('div');
-                    header.className = 'assignment-header';
-                    
-                    const icon = document.createElement('div');
-                    icon.className = 'assignment-icon';
-                    icon.textContent = '📄';
-                    
-                    const nameElement = document.createElement('div');
-                    nameElement.className = 'assignment-name';
-                    nameElement.textContent = assign.name;
-                    
-                    header.appendChild(icon);
-                    header.appendChild(nameElement);
-                    
-                    const detailsElement = document.createElement('div');
-                    detailsElement.className = 'assignment-details';
-                    
-                    const loadingElement = document.createElement('div');
-                    loadingElement.className = 'loading-details';
-                    loadingElement.innerHTML = '<span class="spinner"></span> Loading details...';
-                    detailsElement.appendChild(loadingElement);
-                    
-                    item.appendChild(header);
-                    item.appendChild(detailsElement);
-                    
-                    item.onclick = () => window.open(assign.url, '_blank');
-                    list.appendChild(item);
-                    
-                    // Fetch assignment details asynchronously
-                    fetchAssignmentDetails(assign.url).then(({ dueDate, status }) => {
-                        detailsElement.innerHTML = '';
+                    // Create activity items
+                    sortedActivities.forEach(activity => {
+                        const item = document.createElement('div');
+                        item.className = 'assignment-item';
                         
-                        if (dueDate) {
-                            const dueElement = document.createElement('div');
-                            dueElement.className = 'assignment-due';
-                            dueElement.textContent = `Due: ${dueDate}`;
+                        const header = document.createElement('div');
+                        header.className = 'assignment-header';
+                        
+                        const icon = document.createElement('div');
+                        icon.className = 'assignment-icon';
+                        icon.textContent = section.type === 'assignment' ? '📝' : '📝';
+                        
+                        const nameElement = document.createElement('div');
+                        nameElement.className = 'assignment-name';
+                        nameElement.textContent = activity.name;
+                        
+                        header.appendChild(icon);
+                        header.appendChild(nameElement);
+                        
+                        const detailsElement = document.createElement('div');
+                        detailsElement.className = 'assignment-details';
+                        
+                        // Show loading state for all activities
+                        const loadingElement = document.createElement('div');
+                        loadingElement.className = 'loading-details';
+                        loadingElement.innerHTML = '<span class="spinner"></span> Loading details...';
+                        detailsElement.appendChild(loadingElement);
+                        
+                        item.appendChild(header);
+                        item.appendChild(detailsElement);
+                        
+                        item.onclick = () => window.open(activity.url, '_blank');
+                        list.appendChild(item);
+                        
+                        // Fetch activity details
+                        fetchActivityDetails(activity.url, section.type).then(({ dueDate, status }) => {
+                            detailsElement.innerHTML = '';
                             
-                            // Highlight if due date contains "today" or "tomorrow"
-                            const lowerDate = dueDate.toLowerCase();
-                            if (lowerDate.includes('today') || lowerDate.includes('tomorrow')) {
-                                dueElement.classList.add('highlight');
+                            if (dueDate) {
+                                const dueElement = document.createElement('div');
+                                dueElement.className = 'assignment-due';
+                                dueElement.textContent = section.type === 'assignment' 
+                                    ? `Due: ${dueDate}` 
+                                    : `Due: ${dueDate}`;
+                                
+                                const lowerDate = dueDate.toLowerCase();
+                                if (lowerDate.includes('today') || lowerDate.includes('tomorrow')) {
+                                    dueElement.classList.add('highlight');
+                                }
+                                
+                                detailsElement.appendChild(dueElement);
                             }
                             
-                            detailsElement.appendChild(dueElement);
-                        }
-                        
-                        const statusElement = document.createElement('div');
-                        statusElement.className = `assignment-status status-${status}`;
-                        
-                        const statusIcon = document.createElement('span');
-                        statusIcon.className = 'status-icon';
-                        statusIcon.textContent = status === 'submitted' ? '✓' : '⌛';
-                        
-                        const statusText = document.createElement('span');
-                        statusText.textContent = status === 'submitted' ? 'Submitted' : 'Pending';
-                        
-                        statusElement.appendChild(statusIcon);
-                        statusElement.appendChild(statusText);
-                        detailsElement.appendChild(statusElement);
-                    }).catch(error => {
-                        detailsElement.innerHTML = '';
-                        
-                        const errorElement = document.createElement('div');
-                        errorElement.className = 'assignment-due';
-                        errorElement.textContent = 'Details not available';
-                        detailsElement.appendChild(errorElement);
+                            const statusElement = document.createElement('div');
+                            statusElement.className = `assignment-status status-${status}`;
+                            
+                            const statusIcon = document.createElement('span');
+                            statusIcon.className = 'status-icon';
+                            statusIcon.textContent = status === 'submitted' ? '✓' : status === 'passed' ? '⏰' : '⌛';
+                            
+                            const statusText = document.createElement('span');
+                            statusText.textContent = status === 'submitted' 
+                                ? 'Submitted' 
+                                : status === 'passed' 
+                                ? 'Due date passed' 
+                                : section.type === 'quiz' ? 'Not Submitted' : 'Pending';
+                            
+                            statusElement.appendChild(statusIcon);
+                            statusElement.appendChild(statusText);
+                            detailsElement.appendChild(statusElement);
+                        }).catch(error => {
+                            detailsElement.innerHTML = '';
+                            
+                            const errorElement = document.createElement('div');
+                            errorElement.className = 'assignment-due';
+                            errorElement.textContent = 'Details not available';
+                            detailsElement.appendChild(errorElement);
+                        });
                     });
+                });
+
+                // Add empty state for sections with no activities
+                sections.forEach(section => {
+                    if (section.activities.size === 0) {
+                        const empty = document.createElement('div');
+                        empty.className = 'section-empty';
+                        empty.textContent = `No ${section.title.toLowerCase()} found`;
+                        list.appendChild(empty);
+                    }
                 });
             }
             
@@ -411,7 +501,7 @@
             list.style.display = 'block';
         }
         
-        function fetchAssignmentDetails(url) {
+        function fetchActivityDetails(url, type) {
             return new Promise((resolve, reject) => {
                 GM_xmlhttpRequest({
                     method: "GET",
@@ -421,20 +511,66 @@
                             const parser = new DOMParser();
                             const doc = parser.parseFromString(response.responseText, "text/html");
                             
-                            // Extract due date
                             let dueDate = '';
-                            const dueDateElement = doc.querySelector("#region-main > div.activity-header > div.activity-information > div.activity-dates > div > div:nth-child(2)");
-                            if (dueDateElement) {
-                                dueDate = dueDateElement.textContent.trim();
-                                const prefix = "Assignment due date:";
-                                if (dueDate.startsWith(prefix)) {
-                                    dueDate = dueDate.slice(prefix.length).trim();
+                            let status = 'pending';
+                            
+                            if (type === 'assignment') {
+                                // Extract assignment due date
+                                const dueDateElement = doc.querySelector("#region-main > div.activity-header > div.activity-information > div.activity-dates > div > div:nth-child(2)");
+                                if (dueDateElement) {
+                                    dueDate = dueDateElement.textContent.trim();
+                                    const prefix = "Assignment due date:";
+                                    if (dueDate.startsWith(prefix)) {
+                                        dueDate = dueDate.slice(prefix.length).trim();
+                                    }
+                                }
+                                
+                                // Check assignment submission status
+                                const submissionButton = doc.querySelector('div.completion-info > button');
+                                status = submissionButton ? 'submitted' : 'pending';
+                            } else if (type === 'quiz') {
+                                // Extract quiz due date
+                                const dueDateElement = doc.querySelector("#region-main > div.activity-header > div > div.activity-dates > div > div:nth-child(2)");
+                                if (dueDateElement) {
+                                    dueDate = dueDateElement.textContent.trim();
+                                    const prefixes = ["Quiz closes:", "Quiz closed:"];
+                                    for (const prefix of prefixes) {
+                                        if (dueDate.startsWith(prefix)) {
+                                            dueDate = dueDate.slice(prefix.length).trim();
+                                            break;
+                                        }
+                                    }
+                                }
+                                
+                                // Check if quiz is closed
+                                const isClosed = dueDateElement && dueDateElement.textContent.includes("Quiz closed:");
+                                
+                                if (isClosed) {
+                                    // For closed quizzes, mark as due date passed
+                                    status = 'passed';
+                                } else {
+                                    // For open quizzes: look for re-attempt button
+                                    const buttons = doc.querySelectorAll('button');
+                                    for (const button of buttons) {
+                                        if (button.textContent.includes("Re-attempt quiz")) {
+                                            status = 'submitted';
+                                            break;
+                                        }
+                                    }
+                                    // If no re-attempt button found, check for grade or review button
+                                    if (status !== 'submitted') {
+                                        const gradeElement = doc.querySelector(".grade");
+                                        if (gradeElement && gradeElement.textContent.trim() !== "-") {
+                                            status = 'submitted';
+                                        } else {
+                                            const reviewButton = doc.querySelector('input[value="Review"]');
+                                            if (reviewButton) {
+                                                status = 'submitted';
+                                            }
+                                        }
+                                    }
                                 }
                             }
-                            
-                            // Check submission status
-                            const submissionButton = doc.querySelector('div.completion-info > button');
-                            const status = submissionButton ? 'submitted' : 'pending';
                             
                             resolve({ dueDate, status });
                         } catch (e) {
@@ -444,7 +580,7 @@
                     onerror: function() {
                         reject("Failed to fetch details");
                     },
-                    timeout: 5000 // 5 seconds timeout
+                    timeout: 10000 // 10 seconds timeout
                 });
             });
         }
