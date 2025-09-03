@@ -20,8 +20,14 @@ echo.
 echo "##### Extra Step: Checking SSD Breaking Updates #####"
 call :CheckAndUninstallKB 5063878
 call :CheckAndUninstallKB 5062660
-echo Hiding SSD Breaking Updates to Prevent Reinstall
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Try { $ids=@('5063878','5062660'); $session = New-Object -ComObject Microsoft.Update.Session; $searcher = $session.CreateUpdateSearcher(); $searchResult = $searcher.Search('IsInstalled=0 and Type=\"Software\"'); $hiddenCount = 0; foreach ($update in $searchResult.Updates) { if ($update.KBArticleIDs -and ($update.KBArticleIDs | Where-Object { $ids -contains $_ })) { $update.IsHidden = $true; $hiddenCount++ } }; if ($hiddenCount -gt 0) { Write-Host ('SUCCESS: ' + $hiddenCount + ' updates were hidden.') } else { Write-Host 'INFO: No target updates were found to hide (may already be hidden).' } } Catch { Write-Host 'INFO: Updates are already hidden or not available.' }"
+echo "##### Preparing for PSWindowsUpdate module installation #####"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted"
+echo "##### Installing PSWindowsUpdate module if not present #####"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "if (!(Get-Module -ListAvailable -Name PSWindowsUpdate)) { Install-Module PSWindowsUpdate -Force -SkipPublisherCheck }"
+echo "##### Hiding SSD Breaking Updates to Prevent Reinstall #####"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Import-Module PSWindowsUpdate; Get-WindowsUpdate -KBArticleID KB5063878 | Hide-WindowsUpdate"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Import-Module PSWindowsUpdate; Get-WindowsUpdate -KBArticleID KB5062660 | Hide-WindowsUpdate"
 echo.
 echo "##### Step 01/11: Checking System Files #####"
 sfc /scannow
